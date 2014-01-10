@@ -1,7 +1,8 @@
 package com.example.pidgey;
 
 //00:12:3E:FF:1C:5C
-//00:12:3E:FF:1C:E8
+//00:12:3E:FF:1C:E8 //device
+//4C:80:93:91:C7:C3 //sparklii
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -47,6 +48,18 @@ public class MainActivity extends Activity {
 	private Button mFetchFirstLevel;
 	private TextView mDebugTextView;
 	
+	final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
+	public static String bytesToHex(byte[] bytes) {
+	    char[] hexChars = new char[bytes.length * 3];
+	    for ( int j = 0; j < bytes.length; j++ ) {
+	        int v = bytes[j] & 0xFF;
+	        hexChars[j * 3] = hexArray[v >>> 4];
+	        hexChars[j * 3 + 1] = hexArray[v & 0x0F];
+	        hexChars[j * 3 + 2] = ',';
+	    }
+	    return new String(hexChars);
+	}
+	
     @Override
     protected void onCreate(Bundle savedInstanceState) {
     	Log.d(TAG, "onCreate2() called");
@@ -65,14 +78,9 @@ public class MainActivity extends Activity {
                     byte[] readBuf = (byte[]) msg.obj;
                     String strIncom = new String(readBuf, 0, msg.arg1);                 // create string from bytes array
                     sb.append(strIncom);                                                // append string
-                    int endOfLineIndex = sb.indexOf("\r\n");                            // determine the end-of-line
-                    if (endOfLineIndex > 0) {                                            // if end-of-line,
-                        String sbprint = sb.substring(0, endOfLineIndex);               // extract string
-                        sb.delete(0, sb.length());                                      // and clear
-                        mDebugTextView.setText("Data from Arduino: " + sbprint);            // update TextView
-                        //btnOff.setEnabled(true);
-                        //btnOn.setEnabled(true); 
-                    }
+                    
+                    Log.d(TAG, "Receved txCmd [" + bytesToHex(readBuf) + "]");
+                	
                     Log.d(TAG, "...String:"+ sb.toString() +  "Byte:" + msg.arg1 + "...");
                     break;
                 }
@@ -87,25 +95,17 @@ public class MainActivity extends Activity {
             //mFetchSerialNumber.setEnabled(false);
         	Log.d(TAG, "Button Pressed !");
         	byte[] serialCmd = new byte[8];
-        	serialCmd[0] = 0x01;
-        	serialCmd[1] = 0x23;
+        	       	
+        	serialCmd[0] = 0x51;
+        	serialCmd[1] = 0x27;
         	serialCmd[2] = 0x00;
         	serialCmd[3] = 0x00;
         	serialCmd[4] = 0x00;
         	serialCmd[5] = 0x00;
-        	serialCmd[6] = 0x01;
-        	serialCmd[7] = 0x25;
-        	
-        	Log.d(TAG, serialCmd[0] + " (byte)" );
-        	Log.d(TAG, serialCmd[1] + " (byte)" );
-        	Log.d(TAG, serialCmd[2] + " " );
-        	Log.d(TAG, serialCmd[3] + " " );
-        	Log.d(TAG, serialCmd[4] + " " );
-        	Log.d(TAG, serialCmd[5] + " " );
-        	Log.d(TAG, serialCmd[6] + " " );
-        	Log.d(TAG, serialCmd[7] + " " );
-        	
-            mConnectedThread.write(serialCmd);
+        	serialCmd[6] = (byte)0xa3;
+        	serialCmd[7] = 0x1B;        	
+        	mConnectedThread.write(serialCmd);
+        	//51,27,04,05,00,70,A5,96
             Toast.makeText(getBaseContext(), "Data Sent", Toast.LENGTH_SHORT).show();
           }
         });
@@ -233,7 +233,7 @@ public class MainActivity extends Activity {
           
             public void run() {
             	Log.d(TAG, "...Started Listener Thread...");
-                byte[] buffer = new byte[256];  // buffer store for the stream
+                byte[] buffer = new byte[32];  // buffer store for the stream
                 int bytes; // bytes returned from read()
      
                 // Keep listening to the InputStream until an exception occurs
@@ -241,9 +241,11 @@ public class MainActivity extends Activity {
                     try {
                     	//Log.d(TAG, "...listening...");
                         // Read from the InputStream
+                    	buffer = new byte[32];  // flush buffer
+                    	
                         bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
                         Log.d(TAG, "...Received Data: " + bytes + "...");
-                        h.obtainMessage(RECIEVE_MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler
+                        h.obtainMessage(RECIEVE_MESSAGE, 8, -1, buffer).sendToTarget();     // Send to message queue Handler
                     } catch (IOException e) {
                     	Log.d(TAG, "...IOException...", e);
                         break;
@@ -253,7 +255,8 @@ public class MainActivity extends Activity {
           
             /* Call this from the main activity to send data to the remote device */
             public void write(byte[] msgBuffer) {
-                Log.d(TAG, "...Data to send: " + msgBuffer + "...");
+            	Log.d(TAG, String.format("Send txCmd [%02X %02X %02X %02X %02X %02X %02X %02X]", msgBuffer[0],msgBuffer[1],msgBuffer[2],msgBuffer[3],msgBuffer[4],msgBuffer[5],msgBuffer[6],msgBuffer[7]));
+            	   
                 try {
                 	mmOutStream.write(msgBuffer);
                 } catch (IOException e) {
