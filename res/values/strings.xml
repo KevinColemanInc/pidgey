@@ -2,7 +2,6 @@
 <resources>
 
     <string name="app_name">Pidgey</string>
-    <string name="fetch_serial_number">Fetch Serial Number</string>
-    <string name="fetch_first_level">Fetch First Level</string>
+    <string name="upload">Upload</string>
 
 </resources>

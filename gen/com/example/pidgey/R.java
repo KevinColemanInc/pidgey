@@ -24,9 +24,7 @@ public final class R {
         public static final int ic_launcher=0x7f020000;
     }
     public static final class id {
-        public static final int debug_text_view=0x7f080000;
-        public static final int fetch_first_lvl_button=0x7f080002;
-        public static final int fetch_sn_button=0x7f080001;
+        public static final int fetch_sn_button=0x7f080000;
     }
     public static final class layout {
         public static final int activity_main=0x7f030000;
@@ -36,8 +34,7 @@ public final class R {
     }
     public static final class string {
         public static final int app_name=0x7f050000;
-        public static final int fetch_first_level=0x7f050002;
-        public static final int fetch_serial_number=0x7f050001;
+        public static final int upload=0x7f050001;
     }
     public static final class style {
         /** 

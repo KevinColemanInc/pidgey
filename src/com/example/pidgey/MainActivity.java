@@ -75,8 +75,6 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         
         mFetchSerialNumber = (Button) findViewById(R.id.fetch_sn_button);
-        mFetchFirstLevel = (Button) findViewById(R.id.fetch_first_lvl_button);
-        mDebugTextView = (TextView) findViewById(R.id.debug_text_view);
         h = new Handler() {
             public void handleMessage(android.os.Message msg) {
             	Log.d(TAG, "...Handling a message...");
@@ -109,6 +107,7 @@ public class MainActivity extends Activity {
                     {
                     	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
                     	mSerialNumber += bytesToHex(data);
+                    	mSerialNumber = mSerialNumber.replace(" ", "");
                     	Log.d(TAG, "...Serial Number:"+ mSerialNumber + "...");
                     	 
                     	byte[] serialCmd = new byte[8];
@@ -152,15 +151,15 @@ public class MainActivity extends Activity {
                     	int day = (sum) & 0x1F;
                     	int year = sum >> 9;
                     	int month = (sum & (0x0F << 5)) >> 5;
-                    	int min = timeSum & 0x2F;
+                    	int min = timeSum & 0x3F;
                     	
-                    	Log.d(TAG, "Day " +day + " /Month " + month + " /Year " + year);
+                    	Log.d(TAG, "Day " +day + " /Month " + month + " /Year " + year + " Hour " + readBuf[4] + " min " + min);
                     	mCurrentDate = new Date();
                     	mCurrentDate.setDate(day);
                     	mCurrentDate.setHours(readBuf[4]);
                     	mCurrentDate.setMinutes(min);
-                    	mCurrentDate.setMonth(month);
-                    	mCurrentDate.setYear(year);
+                    	mCurrentDate.setMonth(month-1);
+                    	mCurrentDate.setYear(year + 100);
                     	
                     	byte[] serialCmd = new byte[8];
                     	serialCmd[0] = 0x51;
@@ -178,10 +177,12 @@ public class MainActivity extends Activity {
                     {
                     	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
                     	Log.d(TAG, "Data Reading: " + bytesToHex(data));
-                    	int glucose_value = (readBuf[3] << 8)  | readBuf[2];
-                    	int type = glucose_value >> 14;
-                    	int code_no = glucose_value & 0x4F;
-                    	Reading read = new Reading(mCurrentDate, glucose_value, code_no, type);
+                    	
+                    	int glucose_value = ((readBuf[3] << 8) | (readBuf[2] & 0xFF));
+                    	int typeAndCode = ((readBuf[5] << 8) | readBuf[4]);
+                    	int type = typeAndCode >> 12;
+                    	int code_no = typeAndCode & 0xFFF;
+                    	Reading read = new Reading(mCurrentDate, glucose_value, code_no, type, mSerialNumber);
                     	Log.d(TAG, "Reading.ToString(): " + read.toString());
                     	mReadings.add(read);
                     	
@@ -235,19 +236,9 @@ public class MainActivity extends Activity {
         	serialCmd[7] = 0x1C;        	
         	mConnectedThread.write(serialCmd);
         	
-        	
-        	//51,27,04,05,00,70,A5,96
             Toast.makeText(getBaseContext(), "Data Sent", Toast.LENGTH_SHORT).show();
           }
         });
-      
-        /*btnOff.setOnClickListener(new OnClickListener() {
-          public void onClick(View v) {
-            //btnOff.setEnabled(false);  
-            mConnectedThread.write("0");    // Send "0" via Bluetooth
-            //Toast.makeText(getBaseContext(), "Turn off LED", Toast.LENGTH_SHORT).show();
-          }
-        }); */
       }
        
       private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws IOException {
