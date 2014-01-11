@@ -1,13 +1,14 @@
 package com.example.pidgey;
 
-//00:12:3E:FF:1C:5C
 //00:12:3E:FF:1C:E8 //device
-//4C:80:93:91:C7:C3 //sparklii
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 import android.app.Activity;
@@ -48,6 +49,13 @@ public class MainActivity extends Activity {
 	private Button mFetchFirstLevel;
 	private TextView mDebugTextView;
 	
+	private int mTotalNumberOfReads = 0;
+	private int mCurrentIndex = 0;
+	private String mSerialNumber;
+	private String mNumberOfReadings;
+	private Date mCurrentDate;
+	private List<Reading> mReadings = new ArrayList<Reading>();
+	
 	final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
 	public static String bytesToHex(byte[] bytes) {
 	    char[] hexChars = new char[bytes.length * 3];
@@ -55,7 +63,7 @@ public class MainActivity extends Activity {
 	        int v = bytes[j] & 0xFF;
 	        hexChars[j * 3] = hexArray[v >>> 4];
 	        hexChars[j * 3 + 1] = hexArray[v & 0x0F];
-	        hexChars[j * 3 + 2] = ',';
+	        hexChars[j * 3 + 2] = ' ';
 	    }
 	    return new String(hexChars);
 	}
@@ -79,9 +87,130 @@ public class MainActivity extends Activity {
                     String strIncom = new String(readBuf, 0, msg.arg1);                 // create string from bytes array
                     sb.append(strIncom);                                                // append string
                     
-                    Log.d(TAG, "Receved txCmd [" + bytesToHex(readBuf) + "]");
-                	
-                    Log.d(TAG, "...String:"+ sb.toString() +  "Byte:" + msg.arg1 + "...");
+                    Log.d(TAG, "Received txCmd [" + bytesToHex(readBuf) + "]");
+                    
+                    if (readBuf[1] == 0x28) //Serial Number Requested. Get next half.
+                    {
+                    	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
+                    	mSerialNumber = bytesToHex(data);
+                    	
+                    	byte[] serialCmd = new byte[8];
+                    	serialCmd[0] = 0x51;
+                    	serialCmd[1] = 0x27;
+                    	serialCmd[2] = 0x00;
+                    	serialCmd[3] = 0x00;
+                    	serialCmd[4] = 0x00;
+                    	serialCmd[5] = 0x00;
+                    	serialCmd[6] = (byte)0xa3;
+                    	serialCmd[7] = 0x1B;        	
+                    	mConnectedThread.write(serialCmd);
+                    }
+                    else if (readBuf[1] == 0x27) //Received second half of SN. Get reading count.
+                    {
+                    	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
+                    	mSerialNumber += bytesToHex(data);
+                    	Log.d(TAG, "...Serial Number:"+ mSerialNumber + "...");
+                    	 
+                    	byte[] serialCmd = new byte[8];
+                    	serialCmd[0] = 0x51;
+                    	serialCmd[1] = 0x2B;
+                    	serialCmd[2] = 0x00;
+                    	serialCmd[3] = 0x00;
+                    	serialCmd[4] = 0x00;
+                    	serialCmd[5] = 0x00;
+                    	serialCmd[6] = (byte)0xa3;
+                    	serialCmd[7] = 0x1F;        	
+                    	mConnectedThread.write(serialCmd);
+                    }
+                    else if (readBuf[1] == 0x2B) // Receive reading count and get date of next one
+                    {
+                    	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
+                    	mNumberOfReadings = bytesToHex(data);
+                    	
+                    	mTotalNumberOfReads = (readBuf[3] << 8) | readBuf[2];
+                    	mCurrentIndex = mTotalNumberOfReads-1;//index start at 0
+                    	Log.d(TAG, "...Num of Readings:"+ mTotalNumberOfReads + "...");
+                    	
+                    	byte[] serialCmd = new byte[8];
+                    	serialCmd[0] = 0x51;
+                    	serialCmd[1] = 0x25;
+                    	serialCmd[2] = (byte)mCurrentIndex;
+                    	serialCmd[3] = 0x00;
+                    	serialCmd[4] = 0x00;
+                    	serialCmd[5] = 0x00;
+                    	serialCmd[6] = (byte)0xa3;
+                    	serialCmd[7] = 0x19;        	
+                    	mConnectedThread.write(serialCmd);
+                    	
+                    }
+                    else if (readBuf[1] == 0x25) // Receive date of next one and get the readings
+                    {
+                    	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
+                    	Log.d(TAG, "Date Reading: " + bytesToHex(data));
+                    	int sum = (readBuf[3] << 8)  | readBuf[2];
+                    	int timeSum = (readBuf[5] << 8)  | readBuf[4];
+                    	int day = (sum) & 0x1F;
+                    	int year = sum >> 9;
+                    	int month = (sum & (0x0F << 5)) >> 5;
+                    	int min = timeSum & 0x2F;
+                    	
+                    	Log.d(TAG, "Day " +day + " /Month " + month + " /Year " + year);
+                    	mCurrentDate = new Date();
+                    	mCurrentDate.setDate(day);
+                    	mCurrentDate.setHours(readBuf[4]);
+                    	mCurrentDate.setMinutes(min);
+                    	mCurrentDate.setMonth(month);
+                    	mCurrentDate.setYear(year);
+                    	
+                    	byte[] serialCmd = new byte[8];
+                    	serialCmd[0] = 0x51;
+                    	serialCmd[1] = 0x26;
+                    	serialCmd[2] = 0x00;
+                    	serialCmd[3] = (byte) mCurrentIndex;
+                    	serialCmd[4] = 0x00;
+                    	serialCmd[5] = 0x00;
+                    	serialCmd[6] = (byte)0xa3;
+                    	serialCmd[7] = 0x1a;        	
+                    	mConnectedThread.write(serialCmd);
+                    	                   	
+                    }
+                    else if (readBuf[1] == 0x26) // Receive the readings, decrement index, continue if index > 0 else upload to server
+                    {
+                    	byte[] data = new byte[] {readBuf[5],readBuf[4],readBuf[3],readBuf[2]};
+                    	Log.d(TAG, "Data Reading: " + bytesToHex(data));
+                    	int glucose_value = (readBuf[3] << 8)  | readBuf[2];
+                    	int type = glucose_value >> 14;
+                    	int code_no = glucose_value & 0x4F;
+                    	Reading read = new Reading(mCurrentDate, glucose_value, code_no, type);
+                    	Log.d(TAG, "Reading.ToString(): " + read.toString());
+                    	mReadings.add(read);
+                    	
+                    	mCurrentIndex -= 1;
+                    	if (mCurrentIndex > 0) {
+                    		Log.d(TAG, "Fetching next index...");
+	                    	byte[] serialCmd = new byte[8];
+	                    	serialCmd[0] = 0x51;
+	                    	serialCmd[1] = 0x25;
+	                    	serialCmd[2] = 0x00;
+	                    	serialCmd[3] = (byte) mCurrentIndex;
+	                    	serialCmd[4] = 0x00;
+	                    	serialCmd[5] = 0x00;
+	                    	serialCmd[6] = (byte) ((byte)0xa3 + (byte) mCurrentIndex);
+	                    	serialCmd[7] = 0x19;        	
+	                    	mConnectedThread.write(serialCmd);
+                    	}
+                    	else
+                    	{
+                    		//write up to server
+                    		Log.d(TAG, "Writing to server...");
+                    		
+                    		for (Reading r: mReadings) {
+                    			Log.d(TAG, "Sending reading " + r.toString());
+                    		    r.sendToServer();
+                    		}
+                    	}
+                    	                   	
+                    }
                     break;
                 }
             };
@@ -97,14 +226,16 @@ public class MainActivity extends Activity {
         	byte[] serialCmd = new byte[8];
         	       	
         	serialCmd[0] = 0x51;
-        	serialCmd[1] = 0x27;
+        	serialCmd[1] = 0x28;
         	serialCmd[2] = 0x00;
         	serialCmd[3] = 0x00;
         	serialCmd[4] = 0x00;
         	serialCmd[5] = 0x00;
         	serialCmd[6] = (byte)0xa3;
-        	serialCmd[7] = 0x1B;        	
+        	serialCmd[7] = 0x1C;        	
         	mConnectedThread.write(serialCmd);
+        	
+        	
         	//51,27,04,05,00,70,A5,96
             Toast.makeText(getBaseContext(), "Data Sent", Toast.LENGTH_SHORT).show();
           }
@@ -233,19 +364,34 @@ public class MainActivity extends Activity {
           
             public void run() {
             	Log.d(TAG, "...Started Listener Thread...");
-                byte[] buffer = new byte[32];  // buffer store for the stream
-                int bytes; // bytes returned from read()
+                byte[] buffer = new byte[8];  // buffer store for the stream
+                int bytes = 0; // bytes returned from read()
      
                 // Keep listening to the InputStream until an exception occurs
                 while (true) {
                     try {
-                    	//Log.d(TAG, "...listening...");
                         // Read from the InputStream
-                    	buffer = new byte[32];  // flush buffer
+                    	byte[] tempBuffer = new byte[8];
                     	
-                        bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
-                        Log.d(TAG, "...Received Data: " + bytes + "...");
-                        h.obtainMessage(RECIEVE_MESSAGE, 8, -1, buffer).sendToTarget();     // Send to message queue Handler
+                    	int tempBytes = mmInStream.read(tempBuffer);        // Get number of bytes and message in "buffer"
+                    	Log.d(TAG, "...Received Data: " + tempBytes + "...");
+                    	
+                    	for(int i = bytes; i < bytes + tempBytes; i++)
+                    	{
+                    		buffer[i] = tempBuffer[i-bytes];
+                    	}
+                    	bytes += tempBytes;
+                    	
+                        Log.d(TAG, "...Total received Data: " + bytes + "...");
+                        
+                        if (bytes == 8) // wait until entire packet is received
+                        {
+                        	Log.d(TAG, "...Complete message: " + bytes + "...");
+                        	h.obtainMessage(RECIEVE_MESSAGE, 8, -1, buffer).sendToTarget();     // Send to message queue Handler
+                        	buffer = new byte[8];  // flush buffer
+                        	bytes = 0;
+                        }
+                        
                     } catch (IOException e) {
                     	Log.d(TAG, "...IOException...", e);
                         break;
